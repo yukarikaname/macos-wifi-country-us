@@ -18,7 +18,7 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 set -o pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-LOG=/tmp/wifi-country-us-install.log
+LOG=/tmp/macos-wifi-country-us-install.log
 
 # ---------------------------------------------------------------- preflight --
 

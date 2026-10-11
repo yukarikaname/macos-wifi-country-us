@@ -1,6 +1,6 @@
 # Technical notes
 
-Deep-dive for [wifi-country-us](README.md) — reverse-engineering findings,
+Deep-dive for [macos-wifi-country-us](README.md) — reverse-engineering findings,
 design decisions, and the gotchas worth knowing before porting this to another
 macOS release. If you just want to install the thing, the [README](README.md)
 is all you need.

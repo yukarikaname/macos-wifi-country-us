@@ -1,4 +1,4 @@
-# wifi-country-us
+# macos-wifi-country-us
 
 [English](README.md) | [简体中文](README_CN.md)
 
@@ -13,8 +13,8 @@
 ## 安装
 
 ```sh
-git clone https://github.com/<你的用户名>/wifi-country-us.git
-cd wifi-country-us
+git clone https://github.com/yukarikaname/macos-wifi-country-us.git
+cd macos-wifi-country-us
 ./install.sh
 ```
 

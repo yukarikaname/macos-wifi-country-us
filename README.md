@@ -1,4 +1,4 @@
-# wifi-country-us
+# macos-wifi-country-us
 
 [English](README.md) | [简体中文](README_CN.md)
 
@@ -13,8 +13,8 @@ a dyld injection that survives reboot. Tested on macOS 27.0.1 (Apple silicon).
 ## Install
 
 ```sh
-git clone https://github.com/<your-name>/wifi-country-us.git
-cd wifi-country-us
+git clone https://github.com/yukarikaname/macos-wifi-country-us.git
+cd macos-wifi-country-us
 ./install.sh
 ```
 
