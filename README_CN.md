@@ -71,6 +71,14 @@ macOS 的国家代码来自对附近 AP 信标中「国家 IE」的多数投票�
   `WiFiAgent` 和 `ControlCenter`（两者都缓存了重启*之前*的 WiFi 状态），并检查
   configd 是否还持有 `State:/Network/Global/IPv4`，没有就续租 DHCP 补回来。
 
+- **`com.local.netheal`** → 修复守护。每 60 秒只检查一件事：WiFi 链路明明连着，
+  `State:/Network/Global/IPv4` 却缺失吗？这正是换网后 configd 没能自愈的特征 ——
+  地址、路由、网关都在，只是没选出主服务，于是 DNS 全死。只有命中才重启 configd
+  （约 20 秒恢复）并往 `/usr/local/var/log/netheal.log` 记一行。机器健康时它什么
+  都不做，也不会和 `countryinj` 打架。
+- **`com.local.netwatch`** → 取证守护。每 5 分钟把网络状态、真实可达性和 RSSI 采样
+  写入 `/usr/local/var/log/netwatch.log`；下面这些故障结论就是靠它对上时间线的。
+
 一条硬规矩：**永远不要** `launchctl setenv DYLD_INSERT_LIBRARIES`。它会传播到每个
 job，包括 hardened-runtime 的 `sshd-keygen-wrapper`，AMFI 会在加载阶段直接 SIGKILL
 它 —— SSH 就没了。本项目里所有环境变量都限定在单个 job 或单条命令内。
@@ -132,10 +140,10 @@ job，包括 hardened-runtime 的 `sshd-keygen-wrapper`，AMFI 会在加载阶�
 install.sh   一键安装（前置检查：macOS、CLT、SIP、sudo）
 src/         hook_countryus.m   守护进程侧 dylib（airportd、countryd）
              hook_reader.m      读取端 dylib（system_profiler、ioreg、CoreWLAN）
-launchd/     airportd/countryd 覆盖 plist + com.local.countryinj
-             + com.local.netwatch（可选诊断）
+launchd/     airportd/countryd 覆盖 plist + com.local.{countryinj, netheal,
+             netwatch}
 scripts/     build_*、install_*、restart_daemons、countryinj、verify、
-             netwatch、uninstall
+             netheal、netwatch、uninstall
 wrappers/    system_profiler、wdutil、ioreg
 tools/       sshexec/push/pull、mkoverride、pldiff（密码取自 MAC_SSH_PASS）
 ```

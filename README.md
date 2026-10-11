@@ -76,6 +76,18 @@ accepted and ignored), so the only lever is the reading side:
   cache Wi-Fi state from *before* the restart) and checks that configd still
   owns `State:/Network/Global/IPv4`, renewing the DHCP lease if not.
 
+- **`com.local.netheal`** → repair daemon. Every 60 s it checks one thing: is
+  the Wi-Fi link up while `State:/Network/Global/IPv4` is missing? That is the
+  signature of a network change configd failed to recover from — address,
+  route and gateway intact, no primary service selected, DNS dead. Only then
+  does it restart configd (recovery takes ~20 s) and write a line to
+  `/usr/local/var/log/netheal.log`. On a healthy machine it does nothing at
+  all, and it stays out of `countryinj`'s way.
+- **`com.local.netwatch`** → forensics daemon. Samples network state, real
+  reachability and RSSI every 5 minutes into
+  `/usr/local/var/log/netwatch.log`; it is how the incidents below were
+  pinned to their triggers in the first place.
+
 One hard rule: **never** `launchctl setenv DYLD_INSERT_LIBRARIES`. It reaches
 every job including hardened-runtime `sshd-keygen-wrapper`, and AMFI SIGKILLs
 it at load time — that takes SSH down. All env vars here stay scoped per-job or
@@ -127,6 +139,11 @@ Also a boot-time side effect, and the boot job now self-heals both halves:
    repair, release it with `sudo ipconfig set en1 NONE` once configd is healthy
    again, and let the service own the interface.
 
+   Because the trigger is a network change — which nothing can intercept —
+   `com.local.netheal` watches for exactly this signature every 60 s and
+   restarts configd itself, so a switch costs at most about a minute of
+   connectivity instead of staying broken.
+
 **`wdutil info` shows `Country Code: (null)`.**
 Pre-existing on the machine this was built on — the whole WIFI section is
 null, with and without injection. Not caused by this project.
@@ -149,10 +166,10 @@ episodes to the boot reinject's timeline.
 install.sh   one-shot installer (preflight: macOS, CLT, SIP, sudo)
 src/         hook_countryus.m   daemon-side dylib (airportd, countryd)
              hook_reader.m      reader-side dylib (system_profiler, ioreg, CoreWLAN)
-launchd/     override plists for airportd/countryd + com.local.countryinj
-             + com.local.netwatch (optional diagnostic)
+launchd/     override plists for airportd/countryd + com.local.{countryinj,
+             netheal, netwatch}
 scripts/     build_*, install_*, restart_daemons, countryinj, verify,
-             netwatch, uninstall
+             netheal, netwatch, uninstall
 wrappers/    system_profiler, wdutil, ioreg
 tools/       sshexec/push/pull, mkoverride, pldiff (password via MAC_SSH_PASS)
 ```
