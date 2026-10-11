@@ -132,7 +132,13 @@ done
 
 if [[ $DRYRUN -eq 1 ]]; then
   say "dry run complete"
-  ok "would run: ${STEPS[*]}"
+  LIST=""
+  for entry in "${STEPS[@]}"; do
+    s=${entry%%|*}
+    arg=${entry#*|}
+    LIST="$LIST $s${arg:+ $arg}"
+  done
+  ok "would run:${LIST}"
   exit 0
 fi
 

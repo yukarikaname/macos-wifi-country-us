@@ -51,12 +51,18 @@ if [[ -n "$CD" ]]; then pass "countryd pid=$CD"; else fail "countryd not running
 echo
 
 echo "=== 3. launchd is using the /Library override plists ==="
+# Read the service definition without sudo first: `launchctl print` on a
+# system service is readable as a normal user, and going through sudo here
+# means the check fails (or blocks on a password) in any non-interactive run,
+# which looks exactly like a real override failure.  sudo is only a fallback.
 for lbl in com.apple.airportd com.apple.countryd; do
-  P=$(S launchctl print "system/$lbl" 2>/dev/null | grep -m1 'path =' | tr -d '\t')
-  if print -r -- "$P" | grep -q '/Library/LaunchDaemons/'; then
+  OUT=$(launchctl print "system/$lbl" 2>/dev/null)
+  [[ -z "$OUT" ]] && OUT=$(S launchctl print "system/$lbl" 2>/dev/null)
+  P=$(print -r -- "$OUT" | grep -m1 'path =' | sed 's/.*path = *//')
+  if [[ "$P" == /Library/LaunchDaemons/* ]]; then
     pass "$lbl -> $P"
   else
-    fail "$lbl -> ${P:-no path found}.  At boot launchd prefers /System for duplicate labels; com.local.countryinj is supposed to re-apply it ~45s in.  Check /usr/local/var/log/countryinj.log"
+    fail "$lbl -> ${P:-unreadable}.  At boot launchd prefers /System for duplicate labels; com.local.countryinj is supposed to re-apply it ~45s in.  Check /usr/local/var/log/countryinj.log"
   fi
 done
 echo
