@@ -45,5 +45,14 @@ echo "$(date '+%F %T') end" >> $L
 JEOF
 
 chmod +x $OUT/restart_job.sh
-nohup $OUT/restart_job.sh >/dev/null 2>&1 &
-echo "restart scheduled; tail $LOG in ~30s"
+
+# --wait runs in the foreground so a caller (install.sh) can verify immediately
+# afterwards.  Without it, run detached: restarting airportd drops Wi-Fi for a
+# few seconds, and a foreground run under launchd/ssh would be killed with it.
+if [[ "$1" == "--wait" ]]; then
+  "$OUT/restart_job.sh"
+  echo "restart finished; log at $LOG"
+else
+  nohup $OUT/restart_job.sh >/dev/null 2>&1 &
+  echo "restart scheduled; tail $LOG in ~30s"
+fi

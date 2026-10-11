@@ -1,5 +1,7 @@
 # wifi-country-us
 
+[English](README.md) | [简体中文](README_CN.md)
+
 Make macOS report Wi-Fi regulatory country **US** instead of **CN** on a single
 machine, via dyld injection, surviving reboot.
 
@@ -146,6 +148,28 @@ plists, per-command in wrapper scripts. **Do not reintroduce a machine-wide
 
 ## Install
 
+One shot, with preflight checks:
+
+```sh
+./install.sh
+```
+
+It verifies you are on macOS, that the Xcode Command Line Tools are present,
+and — the one that actually matters — that **SIP is disabled**. It aborts
+before touching anything if SIP is on, because dyld ignores
+`DYLD_INSERT_LIBRARIES` for the daemons this hooks: nothing would crash, the
+daemons would just keep reporting CN, and the install would look like it
+succeeded.
+
+Useful variants:
+
+```sh
+./install.sh --dry-run      # run every check, change nothing
+./install.sh --uninstall    # remove everything this project installed
+```
+
+What it runs, in order — each is independently runnable:
+
 ```sh
 # 1. daemon-side dylib
 ./scripts/build_countryus.sh
@@ -159,8 +183,8 @@ plists, per-command in wrapper scripts. **Do not reintroduce a machine-wide
 # 4. reader PATH wrappers
 ./scripts/install_wrappers.sh
 
-# 5. restart the daemons to pick up the overrides
-./scripts/restart_daemons.sh
+# 5. restart the daemons to pick up the overrides (--wait = foreground)
+./scripts/restart_daemons.sh --wait
 ```
 
 Check it:
@@ -168,6 +192,39 @@ Check it:
 ```sh
 ./scripts/verify.sh
 ```
+
+`verify.sh` prints `PASS`/`FAIL` per check and exits non-zero on any failure,
+so it is scriptable. It checks the global `DYLD_INSERT_LIBRARIES` is empty
+(the sshd safety property), that both daemons are running with the dylib
+loaded, that launchd picked the `/Library` overrides, and that
+`system_profiler` reports US and only US.
+
+### If you re-enable SIP afterwards
+
+The files all survive — `/usr/local`, `/Library/LaunchDaemons` and the PATH
+wrappers are outside SIP's protected set, and `install.sh` only ever refuses to
+*start* with SIP on, it never undoes an existing install. What stops working is
+the loading: SIP-on makes dyld purge `DYLD_*` before starting protected
+(built-in) executables, so the override plists and wrappers still set the
+variable and airportd, countryd, `system_profiler` etc. still ignore it.
+
+Consequences, in order of how alarming they sound:
+
+- **No crash, no outage.** This is the opposite of the global `setenv` disaster
+  above: dyld discards the variable *before* loading anything, so the dylib
+  never loads and no AMFI check is ever reached. Re-enabling SIP cannot take
+  SSH down.
+- **Silently back to CN.** Every reader reverts to the driver's beacon-derived
+  value.
+- **Nothing needs reinstalling.** Disable SIP from Recovery and reboot;
+  `com.local.countryinj` re-applies the overrides at the next boot as usual.
+- `verify.sh` reports it as its own check ("SIP state"), so it is caught by a
+  plain verification run rather than noticed as a mystery regression later.
+
+Not tested directly on this machine — toggling SIP needs a Recovery reboot in
+each direction — so the above is Apple's documented behaviour (Runtime
+Protections: *"Any dynamic linker (dyld) environment variables … are purged
+when launching protected processes"*), not a measurement.
 
 ## Verify manually
 
@@ -244,10 +301,25 @@ Worth knowing if you port this to another macOS release:
 - **`plutil -insert -dict` is unsupported** — use Python's `plistlib`.
 - **`log show` needs sudo** and its `--end` is ignored; filter on timestamps
   with `awk` instead.
+- **A blank "Hardware Address" in the Option-click Wi-Fi menu is not you.**
+  That row comes from ControlCenter, which never loads these dylibs. It is a
+  launch-ordering cache: ControlCenter starts at login and grabs its Wi-Fi
+  detail snapshot then, while `com.local.countryinj` restarts `airportd` ~45s
+  after boot — so ControlCenter is routinely *older* than the daemon it reads
+  from and never refreshes. `killall ControlCenter` repopulates it. Two MACs
+  are also in play when Private Wi-Fi Address is on: `ifconfig` shows the
+  locally-administered one (`06:...`), `networksetup -getmacaddress` the
+  factory one, and the menu wants the factory one.
+- **`shutdown_stall` reports do not implicate this project.** They appear in
+  `/Library/Logs/DiagnosticReports` on this machine dating back before any of
+  this existed, and in each one the stalled processes are ordinary user-session
+  and system daemons — `airportd` and `countryd` never appear, because they
+  exit fine. Don't chase them as an injection regression.
 
 ## Layout
 
 ```
+install.sh      one-shot installer (preflight: macOS, CLT, SIP)
 src/          hook_countryus.m   daemon-side dylib (airportd, countryd)
               hook_reader.m      reader-side dylib (system_profiler, CoreWLAN, ioreg)
 launchd/      com.apple.airportd.plist     /Library override + dylib env
@@ -259,15 +331,10 @@ scripts/      build_countryus.sh  build + install the daemon dylib
               install_wrappers.sh install the /usr/local/bin wrappers
               restart_daemons.sh  restart airportd/countryd (with watchdog)
               countryinj.sh       boot reinjector body
-              verify.sh           state check
+              verify.sh           state check (exit code reflects failure)
               uninstall.sh        remove everything
 wrappers/     system_profiler, wdutil, ioreg
 tools/        sshexec.py, push.py, pull.py   remote helpers (password from
                                              MAC_SSH_PASS env var, not baked in)
               mkoverride.py, pldiff.py       plist clone + drift check
 ```
-
-## Unrelated note
-
-`RegionSpoof.kext` was already present in `/Library/Extensions` on the target
-machine and is inert. This project does not touch it.

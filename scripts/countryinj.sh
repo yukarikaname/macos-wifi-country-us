@@ -15,6 +15,11 @@
 # open and revert to the system plists.  No reliance on PATH now, and the
 # variable that used to be `path` is called `pl_path`.
 /bin/mkdir -p /usr/local/var/log /tmp/opencode
+# This runs as root, and /tmp is sticky-bit: a root-owned 755 /tmp/opencode
+# would then be unwritable by the normal user and impossible to delete, which
+# blocks tools/push.py on the next boot.  Make it world-writable + sticky so
+# both root and the user can write.
+/bin/chmod 1777 /tmp/opencode
 LOG=/usr/local/var/log/countryinj.log
 exec >> "$LOG" 2>&1
 
