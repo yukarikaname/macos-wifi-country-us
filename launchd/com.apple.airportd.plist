@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnablePressuredExit</key>
+	<false/>
+	<key>EnableTransactions</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DYLD_INSERT_LIBRARIES</key>
+		<string>/usr/local/lib/libcountryus.dylib</string>
+		<key>REACH_DARK_WAKE_CONTROL</key>
+		<string>TRUE</string>
+		<key>REACH_DARK_WAKE_NOTIFY</key>
+		<string>TRUE</string>
+	</dict>
+	<key>KeepAlive</key>
+	<dict>
+		<key>Crashed</key>
+		<true/>
+	</dict>
+	<key>Label</key>
+	<string>com.apple.airportd</string>
+	<key>LaunchEvents</key>
+	<dict>
+		<key>com.apple.iokit.matching</key>
+		<dict>
+			<key>com.apple.wifi.controller</key>
+			<dict>
+				<key>IOMatchLaunchStream</key>
+				<true/>
+				<key>IOProviderClass</key>
+				<string>IO80211Controller</string>
+			</dict>
+		</dict>
+	</dict>
+	<key>MachServices</key>
+	<dict>
+		<key>com.apple.airportd</key>
+		<true/>
+		<key>com.apple.corewlan-xpc</key>
+		<true/>
+		<key>com.apple.private.corewifi-xpc</key>
+		<true/>
+		<key>com.apple.private.corewifi.internal-xpc</key>
+		<true/>
+		<key>com.apple.private.corewifi.readonly-xpc</key>
+		<true/>
+		<key>com.apple.private.corewifi.unrestricted-xpc</key>
+		<true/>
+		<key>com.apple.private.corewifi.user-agent-xpc</key>
+		<true/>
+		<key>com.apple.wifi-xpc</key>
+		<true/>
+		<key>com.apple.wifi.sharekit</key>
+		<true/>
+		<key>com.apple.wifi.useragent</key>
+		<true/>
+	</dict>
+	<key>POSIXSpawnType</key>
+	<string>Adaptive</string>
+	<key>Program</key>
+	<string>/usr/libexec/airportd</string>
+</dict>
+</plist>

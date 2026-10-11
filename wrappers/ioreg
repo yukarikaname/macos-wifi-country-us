@@ -1,0 +1,4 @@
+#!/bin/sh
+# Inject the country-code reader hook, then hand off to the real binary.
+export DYLD_INSERT_LIBRARIES=/usr/local/lib/libcountryus_reader.dylib
+exec /usr/sbin/ioreg "$@"

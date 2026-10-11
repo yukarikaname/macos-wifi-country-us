@@ -1,0 +1,7 @@
+# Build outputs
+*.dylib
+*.o
+
+# Transient diagnostics written at runtime (and /tmp is wiped at boot anyway)
+*.log
+*.txt

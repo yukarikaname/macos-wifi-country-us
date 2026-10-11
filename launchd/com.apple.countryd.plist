@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnablePressuredExit</key>
+	<true/>
+	<key>EnableTransactions</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DYLD_INSERT_LIBRARIES</key>
+		<string>/usr/local/lib/libcountryus.dylib</string>
+	</dict>
+	<key>Label</key>
+	<string>com.apple.countryd</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.apple.StatusKit.local.client-com.apple.countryd</key>
+		<true/>
+		<key>com.apple.countryd.update</key>
+		<true/>
+	</dict>
+	<key>POSIXSpawnType</key>
+	<string>Adaptive</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/libexec/countryd</string>
+	</array>
+</dict>
+</plist>
