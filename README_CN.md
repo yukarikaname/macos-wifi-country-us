@@ -100,10 +100,17 @@ job，包括 hardened-runtime 的 `sshd-keygen-wrapper`，AMFI 会在加载阶�
    「未配置」。开机任务会一并重启 `WiFiAgent`。
 2. *configd 丢失全局状态。* 重启 `airportd` 可能让 configd 丢掉
    `State:/Network/Global/IPv4`：`scutil --nwi` 报「Not Reachable」、DNS 挂掉，
-   而地址、默认路由和网关全都还在 —— 机器看起来连着却上不了网。任务每次运行后
-   都检查这个键，缺失就续租 DHCP 重建它（`ipconfig set en1 DHCP`，不动无线电，
-   链路和 SSH 都不会断），再不行才退回系统 plist。已经中招的机器手动修复就跑这一
-   条 `sudo` 命令。
+   而地址、默认路由和网关全都还在 —— 机器看起来连着却上不了网。任务会先给 configd
+   时间自己重建，重建不出来就重启 configd，再不行才升级处理：无线电断电重启，最后
+   退回系统 plist。
+
+   手动修复：`sudo killall configd`，然后**等一到两分钟**，它需要这么久才能把状态
+   重新填回来。
+
+   **不要**用 `sudo ipconfig set en1 DHCP`「修」。那只是把网卡从 WiFi 服务手里
+   拿走，机器当场看起来正常了，可下一次切换网络时 configd 已经没有服务状态可以
+   重新配置，DNS 和默认路由会再次消失。如果之前已经留下了这种接口级配置，等
+   configd 恢复健康后用 `sudo ipconfig set en1 NONE` 释放掉，让服务重新接管网卡。
 
 **`wdutil info` 显示 `Country Code: (null)`。**
 在本项目的开发机上本来就是这样 —— 整个 WIFI 段都是 null，带不带注入都一样。

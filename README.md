@@ -112,11 +112,20 @@ Also a boot-time side effect, and the boot job now self-heals both halves:
 2. *configd loses its global state.* Restarting `airportd` can make configd
    drop `State:/Network/Global/IPv4`: `scutil --nwi` says "Not Reachable" and
    DNS dies, while the address, the default route and the gateway all survive
-   — so the machine looks connected and has no internet. The job checks for
-   that key after every run and renews the DHCP lease to rebuild it
-   (`ipconfig set en1 DHCP`, which does not touch the radio), falling back to
-   the system plists if that fails. To repair an already-broken machine by
-   hand, run exactly that one command with `sudo`.
+   — so the machine looks connected and has no internet. The job waits for
+   configd to build the state, restarts configd if it does not, and only then
+   escalates: radio power cycle, then the system plists.
+
+   To repair a broken machine by hand: `sudo killall configd`, then **wait one
+   to two minutes** — it takes that long to repopulate.
+
+   Do **not** "fix" it with `sudo ipconfig set en1 DHCP`. That fixes the
+   symptom by taking the interface away from the Wi-Fi service, and the machine
+   then looks healthy until the *next* network change, when configd has no
+   service state left to reconfigure and DNS and the default route are lost
+   again. If an interface-level config is already installed from an earlier
+   repair, release it with `sudo ipconfig set en1 NONE` once configd is healthy
+   again, and let the service own the interface.
 
 **`wdutil info` shows `Country Code: (null)`.**
 Pre-existing on the machine this was built on — the whole WIFI section is

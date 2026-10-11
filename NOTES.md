@@ -267,12 +267,32 @@ Worth knowing if you port this to another macOS release:
   installed and the gateway still answers ping. So the machine looks connected
   and has no internet, which is what accompanied the "Not Configured" reports.
   Reproduced reliably by running the reinjector mid-session; at boot configd
-  usually rebuilds on its own within a few minutes, but not always. The fix is
-  a DHCP renew: `sudo ipconfig set en1 DHCP` — it makes IPMonitor recreate the
-  state and, unlike a radio power cycle, does not drop the link, so an SSH
-  session riding on Wi-Fi survives. Note it renames `PrimaryService` to the
-  synthetic `DHCP-en1` until the next boot. `killall configd` is *not* the
-  fix: it was observed returning the same pid and changing nothing.
+  usually rebuilds on its own within a few minutes, but not always.
+- **`sudo ipconfig set en1 DHCP` is a trap, not a fix.** It relieves the
+  symptom instantly — the address, the route and the DNS all come back — by
+  configuring the interface *outside* the SCNetworkService. What it leaves
+  behind is a synthetic `DHCP-en1` ServiceID instead of the service UUID, and
+  from then on configd has nothing to reconfigure on a network change. Measured
+  directly: hours after such a "repair", switching to another SSID killed the
+  global state, DNS and the WAN route again, while the address survived. The
+  correct remedy is `sudo killall configd` and **waiting one to two minutes** —
+  configd repopulates slowly, which makes a 10-second spot check look like the
+  restart did nothing (it was observed returning the same pid once, then
+  starting a new one a minute later). If an ad-hoc config is already installed,
+  release it with `sudo ipconfig set en1 NONE` *after* configd is healthy, so
+  the service owns the interface again. `ipconfig getsummary en1 | grep
+  ServiceID` tells the two states apart: a UUID means the service owns it,
+  `DHCP-en1` means a manual repair owns it.
+- **`networksetup -getairportnetwork en1` reporting "You are not associated
+  with an AirPort network" is not proof of a wedged airportd.** On this OS
+  version it kept saying that while CoreWLAN (system_profiler) showed the
+  association down to the channel and band, the interface had a lease, and the
+  gateway answered ping — and it still said it after a full airportd restart.
+  Treat the legacy Apple80211 path as unreliable and read CoreWLAN or the
+  driver instead.
+- **`State:/Network/Service` does not exist on macOS 27 even on a healthy
+  machine** ("No such key"). Don't use it as a configd-health indicator;
+  `State:/Network/Global/IPv4` and `scutil --nwi` are the signals that work.
 - **`ps eww` on a root process returns no environment when run as a normal
   user** — a false `env_dyld=0`. Always check the dylib is loaded with sudo.
 - **`shutdown_stall` reports do not implicate this project.** They appear in

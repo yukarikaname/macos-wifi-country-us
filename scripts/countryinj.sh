@@ -75,17 +75,23 @@ else
   echo "$(TS) WATCHDOG: WiFi up, keeping injected state"
 fi
 
-# Health check.  Restarting airportd outside the boot sequence reliably
-# destroys configd's global network state: State:/Network/Global/IPv4
-# vanishes, `scutil --nwi` reports Not Reachable and the DNS resolvers go
-# Not Reachable -- while the interface keeps its address, the default route
-# stays installed and the gateway still answers ping.  The machine therefore
-# looks connected and cannot reach the internet or resolve a name, which is
-# exactly what "Not Configured" in Settings accompanies.  At boot configd
-# usually rebuilds this on its own within a few minutes, but not always, so
-# check every time.  A DHCP renew is enough to make IPMonitor recreate the
-# state, and unlike a radio power cycle it does not drop the link, so an SSH
-# session riding on this interface survives the repair.
+# Health check.  Restarting airportd outside the boot sequence can leave
+# configd without its global network state: State:/Network/Global/IPv4
+# vanishes, `scutil --nwi` reports Not Reachable and the DNS resolvers go Not
+# Reachable -- while the interface keeps an address and the gateway answers
+# ping.  The machine therefore looks connected, and cannot reach the internet
+# or resolve a name; that is what "Not Configured" in Settings accompanies.
+#
+# The remedy is to let configd rebuild its own service configuration.  Do NOT
+# reach for `ipconfig set <if> DHCP`: it fixes the immediate symptom by taking
+# the interface away from the SCNetworkService, and the machine then survives
+# on that ad-hoc config until the next network change -- at which point
+# configd has no service to reconfigure, the global state never returns, and
+# DNS and the default route go with it.  (Measured: a network switch broke the
+# machine again hours after such a manual "repair", while it was running on
+# the ad-hoc config.)  So: restart configd and actually wait -- it needs one
+# to two minutes -- then release any ad-hoc config so the service owns the
+# interface.
 g4_present() {
   /usr/bin/printf 'show State:/Network/Global/IPv4\n' |
     /usr/sbin/scutil 2>/dev/null | /usr/bin/grep -c PrimaryInterface
@@ -95,17 +101,54 @@ g4_present() {
 wifi_dev=$(/usr/sbin/networksetup -listallhardwareports 2>/dev/null |
   /usr/bin/awk '/Hardware Port: (Wi-Fi|AirPort)/{getline; print $2; exit}')
 wifi_dev=${wifi_dev:-en1}
+
+# At boot the state is often simply not built yet -- Wi-Fi is still joining and
+# DHCPing -- so give configd time before concluding anything is wrong.
 if [[ $(g4_present) -eq 0 ]]; then
-  echo "$(TS) HEALTH: configd lost State:/Network/Global/IPv4 -- renewing DHCP on $wifi_dev"
-  SP /usr/sbin/ipconfig set "$wifi_dev" DHCP
-  /bin/sleep 12
+  echo "$(TS) HEALTH: no global state yet -- letting configd build it"
+  for i in {1..12}; do
+    /bin/sleep 5
+    [[ $(g4_present) -ne 0 ]] && break
+  done
 fi
+
 if [[ $(g4_present) -eq 0 ]]; then
-  echo "$(TS) HEALTH: still missing -- power-cycling the radio"
+  echo "$(TS) HEALTH: configd lost State:/Network/Global/IPv4 -- restarting configd"
+  SP /usr/bin/killall configd
+  for i in {1..24}; do
+    /bin/sleep 5
+    [[ $(g4_present) -ne 0 ]] && break
+  done
+fi
+
+# An interface-level `ipconfig set <if> DHCP` leaves a synthetic "DHCP-<if>"
+# ServiceID behind; a service-managed interface carries the service UUID
+# instead.  Release the synthetic one -- configd is freshly restarted and can
+# take the interface back -- but keep a hand on the emergency switch: if the
+# state evaporates, put an address back rather than leave the link bare.
+if /usr/sbin/ipconfig getsummary "$wifi_dev" 2>/dev/null |
+    /usr/bin/grep -q "ServiceID : DHCP-${wifi_dev}"; then
+  echo "$(TS) HEALTH: ad-hoc interface config on $wifi_dev -- handing it back to the service"
+  SP /usr/sbin/ipconfig set "$wifi_dev" NONE
+  for i in {1..8}; do
+    /bin/sleep 4
+    [[ $(g4_present) -ne 0 ]] && break
+  done
+  if [[ $(g4_present) -eq 0 ]]; then
+    echo "$(TS) HEALTH: service did not take over -- restoring an address"
+    SP /usr/sbin/ipconfig set "$wifi_dev" DHCP
+    /bin/sleep 10
+  fi
+fi
+
+if [[ $(g4_present) -eq 0 ]]; then
+  echo "$(TS) HEALTH: still missing -- power-cycling the radio, then configd again"
   SP /usr/sbin/networksetup -setairportpower "$wifi_dev" off
   /bin/sleep 4
   SP /usr/sbin/networksetup -setairportpower "$wifi_dev" on
-  /bin/sleep 25
+  /bin/sleep 20
+  SP /usr/bin/killall configd
+  /bin/sleep 45
 fi
 if [[ $(g4_present) -eq 0 ]]; then
   echo "$(TS) HEALTH: state still missing -- falling back to the watchdog revert"
@@ -115,10 +158,8 @@ if [[ $(g4_present) -eq 0 ]]; then
     SP /bin/launchctl bootstrap system "/System/Library/LaunchDaemons/${lbl}.plist"
   done
   /bin/sleep 20
-  if [[ $(g4_present) -eq 0 ]]; then
-    SP /usr/sbin/ipconfig set "$wifi_dev" DHCP
-    /bin/sleep 12
-  fi
+  SP /usr/bin/killall configd
+  /bin/sleep 45
   echo "$(TS) HEALTH: reverted to system plists, global state now $(g4_present)"
 else
   echo "$(TS) HEALTH: global state ok (PrimaryInterface present)"
