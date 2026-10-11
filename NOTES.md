@@ -241,15 +241,40 @@ Worth knowing if you port this to another macOS release:
 - **`plutil -insert -dict` is unsupported** — use Python's `plistlib`.
 - **`log show` needs sudo** and its `--end` is ignored; filter on timestamps
   with `awk` instead.
-- **A blank "Hardware Address" in the Option-click Wi-Fi menu is not you.**
-  That row comes from ControlCenter, which never loads these dylibs. It is a
-  launch-ordering cache: ControlCenter starts at login and grabs its Wi-Fi
-  detail snapshot then, while `com.local.countryinj` restarts `airportd` ~45s
-  after boot — so ControlCenter is routinely *older* than the daemon it reads
-  from and never refreshes. `killall ControlCenter` repopulates it. Two MACs
-  are also in play when Private Wi-Fi Address is on: `ifconfig` shows the
-  locally-administered one (`06:...`), `networksetup -getmacaddress` the
-  factory one, and the menu wants the factory one.
+- **A blank "Hardware Address" in the Option-click Wi-Fi menu is a launch-ordering
+  cache, not a dylib problem.** ControlCenter never loads these dylibs; it
+  starts at login and grabs its Wi-Fi detail snapshot then, while
+  `com.local.countryinj` restarts `airportd` ~45s after boot — so
+  ControlCenter is routinely *older* than the daemon it reads from and never
+  refreshes. Two MACs are also in play when Private Wi-Fi Address is on:
+  `ifconfig` shows the locally-administered one (`06:...`),
+  `networksetup -getmacaddress` the factory one, and the menu wants the
+  factory one. The boot job now restarts ControlCenter after re-applying the
+  overrides, so a fresh login is correct; `killall ControlCenter` fixes a
+  mid-session recurrence in ~2s (the menu bar visibly rebuilds).
+- **"Not Configured" in System Settings is the same cache bug one layer down.**
+  `WiFiAgent` (the "WiFi user agent" the settings extension and ControlCenter
+  both ask) also snapshots at login. Once its `CWWiFiAgent` goes stale it keeps
+  answering from the boot snapshot — including `__isScanAllowed: Scan not
+  allowed, power is OFF` while the interface is up and carrying traffic — and
+  Settings renders "Not Configured" for a perfectly healthy connection. Read
+  the agent's own log to see it: `log show --predicate 'process ==
+  "WiFiAgent"'`. Restarting WiFiAgent fixes it; the boot job does that too.
+- **Restarting `airportd` can destroy configd's global network state.** The
+  observable shape: `State:/Network/Global/IPv4` disappears, `scutil --nwi`
+  reports `Not Reachable` / no primary interface, DNS resolvers go Not
+  Reachable — while the interface keeps its address, the default route stays
+  installed and the gateway still answers ping. So the machine looks connected
+  and has no internet, which is what accompanied the "Not Configured" reports.
+  Reproduced reliably by running the reinjector mid-session; at boot configd
+  usually rebuilds on its own within a few minutes, but not always. The fix is
+  a DHCP renew: `sudo ipconfig set en1 DHCP` — it makes IPMonitor recreate the
+  state and, unlike a radio power cycle, does not drop the link, so an SSH
+  session riding on Wi-Fi survives. Note it renames `PrimaryService` to the
+  synthetic `DHCP-en1` until the next boot. `killall configd` is *not* the
+  fix: it was observed returning the same pid and changing nothing.
+- **`ps eww` on a root process returns no environment when run as a normal
+  user** — a false `env_dyld=0`. Always check the dylib is loaded with sudo.
 - **`shutdown_stall` reports do not implicate this project.** They appear in
   `/Library/Logs/DiagnosticReports` on this machine dating back before any of
   this existed, and in each one the stalled processes are ordinary user-session

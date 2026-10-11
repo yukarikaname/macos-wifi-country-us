@@ -67,7 +67,9 @@ macOS 的国家代码来自对附近 AP 信标中「国家 IE」的多数投票�
   shim 注入，hook 报告插件的 model getter、`CWInterface` 和 ioreg 的属性读取。
 - **`com.local.countryinj`** → 开机 LaunchDaemon。开机时 launchd 对重复 label 会优先
   选 `/System` 的 plist，没有这个任务覆盖就会被静默丢弃、机器退回 CN。它在开机
-  45 秒后重新应用两个覆盖，并带看门狗，绝不会让机器断网。
+  45 秒后重新应用两个覆盖，并带看门狗，绝不会让机器断网。之后它会重启
+  `WiFiAgent` 和 `ControlCenter`（两者都缓存了重启*之前*的 WiFi 状态），并检查
+  configd 是否还持有 `State:/Network/Global/IPv4`，没有就续租 DHCP 补回来。
 
 一条硬规矩：**永远不要** `launchctl setenv DYLD_INSERT_LIBRARIES`。它会传播到每个
 job，包括 hardened-runtime 的 `sshd-keygen-wrapper`，AMFI 会在加载阶段直接 SIGKILL
@@ -84,8 +86,24 @@ job，包括 hardened-runtime 的 `sshd-keygen-wrapper`，AMFI 会在加载阶�
 的文档行为，未在本机实测（切换 SIP 每个方向都要进一次 Recovery 重启）。
 
 **Option 点击 WiFi 菜单时 Hardware Address 是空的。**
-和本项目无关。那一行来自 ControlCenter，它从不加载这些 dylib；它在登录时抓一次
-WiFi 详情快照就不再刷新。`killall ControlCenter` 即可恢复。
+不是本项目的 dylib 造成的，但触发它的是本项目对 `airportd` 的重启。ControlCenter
+在登录时抓一次 WiFi 详情快照（也就是在开机任务重启 `airportd` *之前*），之后不再
+刷新。开机任务现在会自动重启它，所以新登录本来就是对的；万一在会话中途复现，
+`killall ControlCenter` 约 2 秒即可恢复。
+
+**系统设置 → WiFi 显示「未配置」，但连接明明是通的。**
+同样是开机时的副作用，开机任务现在对两半都能自愈：
+
+1. *UI 缓存过期。* `WiFiAgent` —— 设置和 ControlCenter 都要问的「WiFi user
+   agent」—— 同样在登录时取快照；它的 `CWWiFiAgent` 一旦过期就一直用开机时的
+   快照回答，包括在接口明明连着、在正常收发时说「电源已关闭」，于是设置里显示
+   「未配置」。开机任务会一并重启 `WiFiAgent`。
+2. *configd 丢失全局状态。* 重启 `airportd` 可能让 configd 丢掉
+   `State:/Network/Global/IPv4`：`scutil --nwi` 报「Not Reachable」、DNS 挂掉，
+   而地址、默认路由和网关全都还在 —— 机器看起来连着却上不了网。任务每次运行后
+   都检查这个键，缺失就续租 DHCP 重建它（`ipconfig set en1 DHCP`，不动无线电，
+   链路和 SSH 都不会断），再不行才退回系统 plist。已经中招的机器手动修复就跑这一
+   条 `sudo` 命令。
 
 **`wdutil info` 显示 `Country Code: (null)`。**
 在本项目的开发机上本来就是这样 —— 整个 WIFI 段都是 null，带不带注入都一样。
@@ -96,6 +114,11 @@ WiFi 详情快照就不再刷新。`killall ControlCenter` 即可恢复。
 `DYLD_INSERT_LIBRARIES`（必须为空）以及 dylib 是否加载；
 `/usr/local/var/log/countryinj.log` 是开机任务的完整记录。
 
+排网络问题时可以用 `scripts/netwatch.sh` —— 以可选任务 `com.local.netwatch` 安装
+（plist 自行 bootstrap，安装器不动它），每 5 分钟把 configd 的全局状态、网关/WAN/DNS
+可达性和 RSSI 采样写入 `/usr/local/var/log/netwatch.log`。这次就是靠它把「未配置」
+的故障时间点和开机重注入对上的。
+
 ## 目录结构
 
 ```
@@ -103,7 +126,9 @@ install.sh   一键安装（前置检查：macOS、CLT、SIP、sudo）
 src/         hook_countryus.m   守护进程侧 dylib（airportd、countryd）
              hook_reader.m      读取端 dylib（system_profiler、ioreg、CoreWLAN）
 launchd/     airportd/countryd 覆盖 plist + com.local.countryinj
-scripts/     build_*、install_*、restart_daemons、countryinj、verify、uninstall
+             + com.local.netwatch（可选诊断）
+scripts/     build_*、install_*、restart_daemons、countryinj、verify、
+             netwatch、uninstall
 wrappers/    system_profiler、wdutil、ioreg
 tools/       sshexec/push/pull、mkoverride、pldiff（密码取自 MAC_SSH_PASS）
 ```

@@ -72,7 +72,9 @@ accepted and ignored), so the only lever is the reading side:
   `/System` plist over a duplicate `/Library` label, so without this job the
   override is silently dropped and the machine reverts to CN. It re-applies
   both overrides 45 s after boot, watchdogged so it can never leave you
-  without Wi-Fi.
+  without Wi-Fi. It then restarts `WiFiAgent` and `ControlCenter` (both
+  cache Wi-Fi state from *before* the restart) and checks that configd still
+  owns `State:/Network/Global/IPv4`, renewing the DHCP lease if not.
 
 One hard rule: **never** `launchctl setenv DYLD_INSERT_LIBRARIES`. It reaches
 every job including hardened-runtime `sshd-keygen-wrapper`, and AMFI SIGKILLs
@@ -93,9 +95,28 @@ reboot, and it resumes with no reinstall. `verify.sh` flags this as its own
 measured on this machine (toggling SIP needs a Recovery reboot each way).
 
 **The Wi-Fi menu's Hardware Address is blank when I Option-click it.**
-Not this project. That row comes from ControlCenter, which never loads these
-dylibs; it snapshots its Wi-Fi details at login and never refreshes them.
-`killall ControlCenter` repopulates it.
+Not this project's dylibs — but this project's restart of `airportd` is what
+triggers it. ControlCenter snapshots its Wi-Fi details at login, i.e. *before*
+the boot job restarts `airportd`, and never refreshes them. The boot job now
+restarts it automatically, so a fresh login is already correct; if it ever
+recurs mid-session, `killall ControlCenter` repopulates it in ~2 s.
+
+**System Settings → Wi-Fi says "Not Configured" while the link works.**
+Also a boot-time side effect, and the boot job now self-heals both halves:
+
+1. *Stale UI agent.* `WiFiAgent` — the "WiFi user agent" Settings and
+   ControlCenter both ask — also snapshots at login, and once its
+   `CWWiFiAgent` is stale it keeps answering from the boot snapshot, including
+   "power is OFF" while the interface is up and carrying traffic. Settings
+   then displays "Not Configured". The boot job restarts `WiFiAgent` too.
+2. *configd loses its global state.* Restarting `airportd` can make configd
+   drop `State:/Network/Global/IPv4`: `scutil --nwi` says "Not Reachable" and
+   DNS dies, while the address, the default route and the gateway all survive
+   — so the machine looks connected and has no internet. The job checks for
+   that key after every run and renews the DHCP lease to rebuild it
+   (`ipconfig set en1 DHCP`, which does not touch the radio), falling back to
+   the system plists if that fails. To repair an already-broken machine by
+   hand, run exactly that one command with `sudo`.
 
 **`wdutil info` shows `Country Code: (null)`.**
 Pre-existing on the machine this was built on — the whole WIFI section is
@@ -106,6 +127,13 @@ Run `./scripts/verify.sh`. It reports the launchd override path, the global
 `DYLD_INSERT_LIBRARIES` (must be empty) and whether the dylibs loaded;
 `/usr/local/var/log/countryinj.log` has the boot job's transcript.
 
+For network-health forensics, `scripts/netwatch.sh` — installed as the
+optional `com.local.netwatch` job (bootstrap the plist yourself; the installer
+does not touch it) — samples configd's global state, gateway/WAN/DNS
+reachability and RSSI every 5 minutes into
+`/usr/local/var/log/netwatch.log`. It is what pinned the "Not Configured"
+episodes to the boot reinject's timeline.
+
 ## Repo layout
 
 ```
@@ -113,7 +141,9 @@ install.sh   one-shot installer (preflight: macOS, CLT, SIP, sudo)
 src/         hook_countryus.m   daemon-side dylib (airportd, countryd)
              hook_reader.m      reader-side dylib (system_profiler, ioreg, CoreWLAN)
 launchd/     override plists for airportd/countryd + com.local.countryinj
-scripts/     build_*, install_*, restart_daemons, countryinj, verify, uninstall
+             + com.local.netwatch (optional diagnostic)
+scripts/     build_*, install_*, restart_daemons, countryinj, verify,
+             netwatch, uninstall
 wrappers/    system_profiler, wdutil, ioreg
 tools/       sshexec/push/pull, mkoverride, pldiff (password via MAC_SSH_PASS)
 ```
