@@ -283,6 +283,17 @@ Worth knowing if you port this to another macOS release:
   the service owns the interface again. `ipconfig getsummary en1 | grep
   ServiceID` tells the two states apart: a UUID means the service owns it,
   `DHCP-en1` means a manual repair owns it.
+- **A Wi-Fi network change can leave configd with no primary service even
+  though the service is fully configured.** Observed: after a switch,
+  `State:/Network/Service/<uuid>/IPv4` is present with routes and an
+  ARP-resolved gateway, while `State:/Network/Global/IPv4` is gone, nwi says
+  Not Reachable and the resolvers go Not Reachable — address, route and
+  gateway all intact. `killall configd` rebuilds the global state in ~20 s.
+  Whether the injection contributes is *not* established: the legacy
+  Apple80211 path (`networksetup -getairportnetwork`) reports "not associated"
+  in both healthy and broken states, so it cannot be used as evidence either
+  way, and an A/B with the dylib unloaded has not been run. `com.local.netheal`
+  exists so the outcome does not depend on that question being settled.
 - **`networksetup -getairportnetwork en1` reporting "You are not associated
   with an AirPort network" is not proof of a wedged airportd.** On this OS
   version it kept saying that while CoreWLAN (system_profiler) showed the

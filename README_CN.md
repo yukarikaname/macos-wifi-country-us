@@ -120,6 +120,9 @@ job，包括 hardened-runtime 的 `sshd-keygen-wrapper`，AMFI 会在加载阶�
    重新配置，DNS 和默认路由会再次消失。如果之前已经留下了这种接口级配置，等
    configd 恢复健康后用 `sudo ipconfig set en1 NONE` 释放掉，让服务重新接管网卡。
 
+   由于触发点是「换网」这一动作、没法拦截，`com.local.netheal` 会每 60 秒盯住这个
+   特征并自动重启 configd —— 换一次网络最多断一分钟左右，而不是一直断着。
+
 **`wdutil info` 显示 `Country Code: (null)`。**
 在本项目的开发机上本来就是这样 —— 整个 WIFI 段都是 null，带不带注入都一样。
 不是本项目造成的。
